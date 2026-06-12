@@ -66,35 +66,37 @@ body {
 /* --- Upload --- */
 .upload-zone {
   border: 2px dashed var(--border); border-radius: var(--radius);
-  padding: 48px 24px; text-align: center; cursor: pointer;
+  padding: 60px 24px; text-align: center; cursor: pointer;
   transition: all .25s; position: relative; overflow: hidden;
+  min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
 .upload-zone:hover, .upload-zone.drag-over {
-  border-color: var(--accent); background: rgba(124,92,252,0.04);
+  border-color: var(--accent); background: rgba(124,92,252,0.06);
 }
-.upload-zone.has-image { border-style: solid; border-color: var(--border); padding: 20px; }
-.upload-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.6; }
-.upload-text { font-size: 15px; color: var(--text2); }
-.upload-text strong { color: var(--accent); }
-.upload-hint { font-size: 12px; color: var(--text2); margin-top: 6px; opacity: 0.6; }
+.upload-zone.has-image { border-style: solid; border-color: var(--border); padding: 24px; min-height: auto; }
+.upload-icon { font-size: 72px; margin-bottom: 16px; opacity: 0.5; line-height: 1; }
+.upload-text { font-size: 16px; color: var(--text2); }
+.upload-text strong { color: var(--accent); cursor: pointer; }
+.upload-hint { font-size: 12px; color: var(--text2); margin-top: 8px; opacity: 0.5; }
 .upload-input { display: none; }
 
 /* Preview in upload zone */
 .preview-row {
-  display: flex; gap: 20px; align-items: flex-start;
+  display: flex; gap: 24px; align-items: center; width: 100%;
 }
 .preview-thumb {
-  width: 160px; height: 120px; border-radius: var(--radius-sm);
-  object-fit: cover; border: 1px solid var(--border); flex-shrink: 0;
+  width: 280px; height: 210px; border-radius: var(--radius-sm);
+  object-fit: contain; border: 1px solid var(--border); flex-shrink: 0;
+  background: var(--bg);
 }
 .preview-info { flex: 1; text-align: left; min-width: 0; }
-.preview-info .filename { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.preview-info .filename { font-weight: 600; font-size: 15px; word-break: break-all; margin-bottom: 6px; }
 .preview-info .meta { font-size: 13px; color: var(--text2); margin-top: 4px; }
-.preview-info .meta span { display: block; }
+.preview-info .meta span { display: block; margin-bottom: 2px; }
 .remove-btn {
   background: none; border: 1px solid var(--border); color: var(--text2);
-  padding: 6px 12px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px;
-  margin-top: 8px; transition: all .2s;
+  padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px;
+  margin-top: 12px; transition: all .2s;
 }
 .remove-btn:hover { border-color: var(--red); color: var(--red); }
 
@@ -229,8 +231,10 @@ body {
 @media (max-width: 600px) {
   .card { padding: 16px; }
   .model-grid { grid-template-columns: 1fr 1fr; }
+  .upload-zone { padding: 36px 16px; min-height: 180px; }
+  .upload-icon { font-size: 52px; }
   .preview-row { flex-direction: column; }
-  .preview-thumb { width: 100%; height: auto; max-height: 200px; }
+  .preview-thumb { width: 100%; height: auto; max-height: 220px; }
   .result-actions { flex-direction: column; }
   .result-actions .btn { width: 100%; }
   .comparison-handle { width: 32px; height: 32px; }
@@ -428,13 +432,35 @@ function saveApiKey() {
 // ==================== UPLOAD ====================
 function setupDragDrop() {
   const zone = document.getElementById('uploadZone');
-  ['dragenter', 'dragover'].forEach(e => {
-    zone.addEventListener(e, (ev) => { ev.preventDefault(); zone.classList.add('drag-over'); });
+  let dragCounter = 0;
+
+  zone.addEventListener('dragenter', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    dragCounter++;
+    zone.classList.add('drag-over');
   });
-  ['dragleave', 'drop'].forEach(e => {
-    zone.addEventListener(e, (ev) => { ev.preventDefault(); zone.classList.remove('drag-over'); });
+
+  zone.addEventListener('dragleave', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    dragCounter--;
+    if (dragCounter <= 0) {
+      dragCounter = 0;
+      zone.classList.remove('drag-over');
+    }
   });
+
+  zone.addEventListener('dragover', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+  });
+
   zone.addEventListener('drop', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    dragCounter = 0;
+    zone.classList.remove('drag-over');
     const file = ev.dataTransfer.files[0];
     if (file) processFile(file);
   });
