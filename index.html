@@ -327,34 +327,31 @@ const MODELS = [
     name: "SUPIR",
     desc: "顶级照片增强，细节还原最逼真",
     tag: "效果最佳",
-    version: "b4f32558f5e2e7cbfeda89f6d34d80ec3b10b39820f38c10e3890574c4b5e00f",
+    version: "1302b550b4f7681da87ed0e405016d443fe1fafd64dabce6673401855a5039b5",
     inputKey: "image",
-    extraInput: { upscale: 4 }
+    extraInput: {
+      upscale: 2,
+      min_size: 2048,
+      use_llava: true,
+      color_fix_type: "Wavelet",
+      model_name: "SUPIR-v0F"
+    }
   },
   {
     id: "xinntao/realesrgan",
     name: "Real-ESRGAN",
     desc: "通用超分，速度快，动漫/老照片强",
     tag: "快速通用",
-    version: "1b108a83c98e5f5a88b1f0731a8c54878bd3b19b9f9ea903afbec260f9c43fe5",
-    inputKey: "image",
-    extraInput: { scale: 4, face_enhance: false }
-  },
-  {
-    id: "philz1337/supir",
-    name: "SUPIR (v2)",
-    desc: "SUPIR 社区优化版，LLaVA 加持",
-    tag: "细节增强",
-    version: "6e40e71b2b74d1f8b80e1dcfca375a6e48f2aac6a5b5420a80ac2a431eb8a55f",
-    inputKey: "image",
-    extraInput: { upscale: 4, prompt: "high quality, sharp, detailed" }
+    version: "1b976a4d456ed9e4d1a846597b7614e79eadad3032e9124fa63859db0fd59b56",
+    inputKey: "img",
+    extraInput: { scale: 4, face_enhance: false, version: "General - v3" }
   },
   {
     id: "nightmareai/real-esrgan",
     name: "Real-ESRGAN v2",
     desc: "增强版 Real-ESRGAN，人脸修复好",
     tag: "人脸增强",
-    version: "42fed1c4974146d4c24112e98f69b1a08c9b4e5d5d3be5b5f64d45ed212c54d3",
+    version: "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
     inputKey: "image",
     extraInput: { scale: 4, face_enhance: true }
   }
