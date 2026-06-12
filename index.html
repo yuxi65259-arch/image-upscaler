@@ -498,7 +498,9 @@ function updateProcessBtn() {
   btn.disabled = !(getApiKey() && selectedFile);
 }
 
-// ==================== PROCESS ====================
+// ==================== API (calls local server to proxy Replicate) ====================
+const API_BASE = '';
+
 async function startUpscale() {
   if (isProcessing) return;
   const apiKey = getApiKey();
@@ -515,27 +517,36 @@ async function startUpscale() {
   progSec.classList.add('active');
   progSec.scrollIntoView({ behavior: 'smooth' });
 
-  setProgress(5, '正在上传图片到 Replicate...');
+  setProgress(10, '正在上传图片...');
 
   try {
-    // Step 1: Upload file to Replicate
-    const fileUrl = await uploadFileToReplicate(apiKey, selectedFile);
-    setProgress(15, '图片上传完成，正在排队...');
+    // Step 1: Read file as base64
+    const imageB64 = await readFileAsBase64(selectedFile);
 
-    // Step 2: Create prediction
-    const input = { ...selectedModel.extraInput };
-    input[selectedModel.inputKey] = fileUrl;
+    // Step 2: Send to local server proxy → Replicate
+    setProgress(20, '正在提交到云端处理...');
+    const resp = await fetch(`${API_BASE}/api/upscale`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        model: selectedModel.id,
+        image: imageB64
+      })
+    });
 
-    const prediction = await createPrediction(apiKey, selectedModel.id, selectedModel.version, input);
-    predictionId = prediction.id;
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `请求失败 (${resp.status})`);
+
+    predictionId = data.prediction_id;
 
     // Step 3: Poll for result
-    setProgress(20, '模型正在处理中，请耐心等待...');
+    setProgress(25, '模型正在推理中...');
     const result = await pollPrediction(apiKey, predictionId);
 
     // Step 4: Show result
     if (result.output) {
-      resultUrl = Array.isArray(result.output) ? result.output[0] : result.output;
+      resultUrl = result.output;
       showResult(resultUrl, result);
     } else if (result.error) {
       throw new Error(result.error);
@@ -559,58 +570,27 @@ async function startUpscale() {
   }
 }
 
-async function uploadFileToReplicate(apiKey, file) {
-  const form = new FormData();
-  form.append('content', file);
-
-  const resp = await fetch('https://api.replicate.com/v1/files', {
-    method: 'POST',
-    headers: { 'Authorization': `Token ${apiKey}` },
-    body: form
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
-
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}));
-    throw new Error(err.detail || `上传失败 (HTTP ${resp.status})`);
-  }
-
-  const data = await resp.json();
-  return data.urls.get;
-}
-
-async function createPrediction(apiKey, model, version, input) {
-  const resp = await fetch('https://api.replicate.com/v1/predictions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Token ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      version: version,
-      input: input
-    })
-  });
-
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}));
-    throw new Error(err.detail || `创建任务失败 (HTTP ${resp.status})`);
-  }
-
-  return resp.json();
 }
 
 async function pollPrediction(apiKey, id) {
   let attempts = 0;
-  const maxAttempts = 300; // ~10 minutes at 2s intervals
+  const maxAttempts = 300;
 
   while (attempts < maxAttempts) {
-    const resp = await fetch(`https://api.replicate.com/v1/predictions/${id}`, {
+    const resp = await fetch(`${API_BASE}/api/poll/${id}`, {
       headers: { 'Authorization': `Token ${apiKey}` }
     });
 
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      throw new Error(err.detail || `查询状态失败`);
+      throw new Error(err.error || `查询状态失败`);
     }
 
     const pred = await resp.json();
@@ -622,11 +602,12 @@ async function pollPrediction(apiKey, id) {
       case 'canceled':
         throw new Error(pred.error || `任务${pred.status}`);
       case 'processing':
-      case 'starting':
+      case 'starting': {
         const prog = pred.logs ? parseProgress(pred.logs) : null;
-        const pct = 20 + Math.min(attempts, 60) / 60 * 75;
+        const pct = 25 + Math.min(attempts, 60) / 60 * 70;
         setProgress(pct, prog || '模型正在推理中...');
         break;
+      }
       default:
         setProgress(20, '排队中...');
     }
@@ -684,11 +665,6 @@ function showResult(url, prediction) {
 
   // Update result info
   const info = document.getElementById('resultInfo');
-  const origW = prediction.input?.[selectedModel.inputKey] ? '--' : (() => {
-    const img = new Image();
-    img.src = URL.createObjectURL(selectedFile);
-    return selectedFile.size;
-  })();
 
   info.innerHTML = `
     <div class="result-stat">
@@ -741,18 +717,12 @@ function updateResultInfo(prediction) {
 async function downloadResult() {
   if (!resultUrl) return;
   try {
-    const resp = await fetch(resultUrl);
-    const blob = await resp.blob();
-    const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-    const name = selectedFile.name.replace(/\.[^.]+$/, '') + `_upscaled.${ext}`;
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    // Download via local proxy to avoid CORS
+    const apiKey = getApiKey();
+    const proxyUrl = `${API_BASE}/api/download?url=${encodeURIComponent(resultUrl)}&key=${encodeURIComponent(apiKey)}`;
+    window.open(proxyUrl, '_blank');
     showToast('下载已开始 ✓');
   } catch (e) {
-    // Fallback: open in new tab
     window.open(resultUrl, '_blank');
     showToast('已在新标签页打开，请右键保存');
   }
