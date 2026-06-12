@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 图片超清增强 - SUPIR & Real-ESRGAN</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0a0a0f;
+  --surface: #14141f;
+  --surface2: #1a1a2e;
+  --border: #2a2a3e;
+  --text: #e0e0e8;
+  --text2: #8888a0;
+  --accent: #7c5cfc;
+  --accent2: #5b3cfc;
+  --green: #22c55e;
+  --red: #ef4444;
+  --orange: #f59e0b;
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- Utility --- */
+.container { max-width: 900px; margin: 0 auto; padding: 0 20px; }
+
+/* --- Header --- */
+.header {
+  padding: 24px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky; top: 0; z-index: 10;
+  backdrop-filter: blur(20px);
+}
+.header-inner { display: flex; align-items: center; justify-content: space-between; }
+.logo { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+.logo span { color: var(--accent); }
+.api-key-btn {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text2);
+  padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 13px;
+  transition: all .2s;
+}
+.api-key-btn:hover { border-color: var(--accent); color: var(--text); }
+.api-key-btn.active { border-color: var(--green); color: var(--green); }
+
+/* --- Main --- */
+.main { padding: 40px 0; }
+
+/* --- Card --- */
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 28px; margin-bottom: 20px;
+}
+
+/* --- Upload --- */
+.upload-zone {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 48px 24px; text-align: center; cursor: pointer;
+  transition: all .25s; position: relative; overflow: hidden;
+}
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: var(--accent); background: rgba(124,92,252,0.04);
+}
+.upload-zone.has-image { border-style: solid; border-color: var(--border); padding: 20px; }
+.upload-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.6; }
+.upload-text { font-size: 15px; color: var(--text2); }
+.upload-text strong { color: var(--accent); }
+.upload-hint { font-size: 12px; color: var(--text2); margin-top: 6px; opacity: 0.6; }
+.upload-input { display: none; }
+
+/* Preview in upload zone */
+.preview-row {
+  display: flex; gap: 20px; align-items: flex-start;
+}
+.preview-thumb {
+  width: 160px; height: 120px; border-radius: var(--radius-sm);
+  object-fit: cover; border: 1px solid var(--border); flex-shrink: 0;
+}
+.preview-info { flex: 1; text-align: left; min-width: 0; }
+.preview-info .filename { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.preview-info .meta { font-size: 13px; color: var(--text2); margin-top: 4px; }
+.preview-info .meta span { display: block; }
+.remove-btn {
+  background: none; border: 1px solid var(--border); color: var(--text2);
+  padding: 6px 12px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px;
+  margin-top: 8px; transition: all .2s;
+}
+.remove-btn:hover { border-color: var(--red); color: var(--red); }
+
+/* --- Model Select --- */
+.section-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+.model-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.model-card {
+  background: var(--surface2); border: 2px solid var(--border); border-radius: var(--radius);
+  padding: 16px; cursor: pointer; transition: all .2s;
+}
+.model-card:hover { border-color: var(--accent); }
+.model-card.selected { border-color: var(--accent); background: rgba(124,92,252,0.08); }
+.model-card .model-name { font-weight: 600; font-size: 15px; margin-bottom: 2px; }
+.model-card .model-desc { font-size: 12px; color: var(--text2); }
+.model-card .model-tag {
+  display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  margin-top: 6px; background: rgba(124,92,252,0.15); color: var(--accent);
+}
+
+/* --- Button --- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 28px; border-radius: var(--radius); font-size: 15px; font-weight: 600;
+  border: none; cursor: pointer; transition: all .2s; width: 100%;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent2); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(124,92,252,0.3); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-download { background: var(--green); color: #fff; }
+
+/* --- Progress --- */
+.progress-section { display: none; }
+.progress-section.active { display: block; }
+.progress-bar-wrap {
+  background: var(--surface2); border-radius: 20px; height: 6px; overflow: hidden;
+  margin: 16px 0;
+}
+.progress-bar {
+  height: 100%; background: linear-gradient(90deg, var(--accent), #a78bfa);
+  border-radius: 20px; width: 0%; transition: width .3s;
+}
+.progress-status { font-size: 14px; color: var(--text2); text-align: center; }
+.progress-status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-right: 8px; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* --- Result --- */
+.result-section { display: none; }
+.result-section.active { display: block; }
+
+.comparison-container {
+  position: relative; width: 100%; overflow: hidden; border-radius: var(--radius);
+  border: 1px solid var(--border); user-select: none; cursor: col-resize;
+  background: var(--bg);
+}
+.comparison-container img {
+  display: block; width: 100%; height: auto;
+}
+.comparison-before {
+  position: absolute; top: 0; left: 0; width: 50%; height: 100%; overflow: hidden;
+}
+.comparison-before img {
+  position: absolute; top: 0; left: 0;
+  width: 200%; max-width: none;
+}
+.comparison-slider {
+  position: absolute; top: 0; bottom: 0; left: 50%; width: 3px;
+  background: #fff; box-shadow: 0 0 8px rgba(0,0,0,0.5); pointer-events: none;
+}
+.comparison-handle {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  width: 40px; height: 40px; background: #fff; border-radius: 50%;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;
+  pointer-events: none; font-size: 14px;
+}
+.comparison-label {
+  position: absolute; bottom: 12px; padding: 4px 12px; border-radius: 20px;
+  font-size: 12px; font-weight: 600; color: #fff; background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(8px); pointer-events: none;
+}
+.label-before { left: 12px; }
+.label-after { right: 12px; }
+
+/* --- Result Info --- */
+.result-info { display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap; }
+.result-stat {
+  flex: 1; min-width: 120px; background: var(--surface2); border-radius: var(--radius-sm);
+  padding: 14px 18px; text-align: center;
+}
+.result-stat .stat-val { font-size: 20px; font-weight: 700; }
+.result-stat .stat-lbl { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.stat-green { color: var(--green); }
+
+.result-actions { display: flex; gap: 12px; margin-top: 16px; }
+.result-actions .btn { width: auto; }
+
+/* --- Modal --- */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  z-index: 100; align-items: center; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 28px; width: 90%; max-width: 460px;
+}
+.modal h3 { margin-bottom: 12px; font-size: 18px; }
+.modal p { font-size: 13px; color: var(--text2); margin-bottom: 16px; }
+.modal p a { color: var(--accent); }
+.modal input {
+  width: 100%; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text); font-size: 14px; outline: none;
+}
+.modal input:focus { border-color: var(--accent); }
+.modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+.modal-actions .btn { width: auto; flex: 1; }
+
+/* --- Toast --- */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 24px;
+  padding: 10px 20px; font-size: 13px; z-index: 200; opacity: 0; transition: opacity .3s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+.toast.error { border-color: var(--red); color: var(--red); }
+
+/* --- Footer --- */
+.footer { text-align: center; padding: 24px 0; font-size: 12px; color: var(--text2); opacity: 0.5; }
+
+@media (max-width: 600px) {
+  .card { padding: 16px; }
+  .model-grid { grid-template-columns: 1fr 1fr; }
+  .preview-row { flex-direction: column; }
+  .preview-thumb { width: 100%; height: auto; max-height: 200px; }
+  .result-actions { flex-direction: column; }
+  .result-actions .btn { width: 100%; }
+  .comparison-handle { width: 32px; height: 32px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="container header-inner">
+    <div class="logo">AI<span>超清增强</span></div>
+    <button class="api-key-btn" id="apiKeyBtn" onclick="openApiKeyModal()">设置 API Key</button>
+  </div>
+</header>
+
+<!-- Main -->
+<main class="main container">
+
+  <!-- Model Selection -->
+  <div class="card">
+    <div class="section-title">选择模型</div>
+    <div class="model-grid" id="modelGrid"></div>
+  </div>
+
+  <!-- Upload -->
+  <div class="card">
+    <div class="section-title">上传图片</div>
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      <div class="upload-icon">🖼️</div>
+      <div class="upload-text">拖拽图片到这里，或 <strong>点击选择文件</strong></div>
+      <div class="upload-hint">支持 JPG / PNG / WebP，最大 10MB</div>
+    </div>
+    <input type="file" class="upload-input" id="fileInput" accept="image/jpeg,image/png,image/webp" onchange="handleFileSelect(event)">
+  </div>
+
+  <!-- Process Button -->
+  <button class="btn btn-primary" id="processBtn" disabled onclick="startUpscale()">
+    ⚡ 开始超清增强
+  </button>
+
+  <!-- Progress -->
+  <div class="progress-section card" id="progressSection">
+    <div class="section-title">处理中...</div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="progress-status"><span class="dot"></span><span id="progressText">准备中...</span></div>
+  </div>
+
+  <!-- Result -->
+  <div class="result-section card" id="resultSection">
+    <div class="section-title">处理结果</div>
+    <div class="comparison-container" id="comparisonContainer">
+      <img id="imgAfter" alt="处理后" draggable="false">
+      <div class="comparison-before" id="comparisonBefore">
+        <img id="imgBefore" alt="处理前" draggable="false">
+      </div>
+      <div class="comparison-slider" id="comparisonSlider"></div>
+      <div class="comparison-handle" id="comparisonHandle">⇔</div>
+      <div class="comparison-label label-before">原图</div>
+      <div class="comparison-label label-after">增强后</div>
+    </div>
+    <div class="result-info" id="resultInfo"></div>
+    <div class="result-actions">
+      <button class="btn btn-download" id="downloadBtn" onclick="downloadResult()">下载超清图片</button>
+      <button class="btn btn-secondary" onclick="resetAll()">重新开始</button>
+    </div>
+  </div>
+
+</main>
+
+<footer class="footer">Powered by Replicate API · SUPIR & Real-ESRGAN</footer>
+
+<!-- API Key Modal -->
+<div class="modal-overlay" id="apiKeyModal">
+  <div class="modal">
+    <h3>设置 Replicate API Key</h3>
+    <p>在 <a href="https://replicate.com/account/api-tokens" target="_blank">replicate.com/account/api-tokens</a> 创建 Token，粘贴到下方。Key 仅保存在你的浏览器本地。</p>
+    <input type="password" id="apiKeyInput" placeholder="r8_...">
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeApiKeyModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ==================== MODELS ====================
+const MODELS = [
+  {
+    id: "cjwbw/supir",
+    name: "SUPIR",
+    desc: "顶级照片增强，细节还原最逼真",
+    tag: "效果最佳",
+    version: "b4f32558f5e2e7cbfeda89f6d34d80ec3b10b39820f38c10e3890574c4b5e00f",
+    inputKey: "image",
+    extraInput: { upscale: 4 }
+  },
+  {
+    id: "xinntao/realesrgan",
+    name: "Real-ESRGAN",
+    desc: "通用超分，速度快，动漫/老照片强",
+    tag: "快速通用",
+    version: "1b108a83c98e5f5a88b1f0731a8c54878bd3b19b9f9ea903afbec260f9c43fe5",
+    inputKey: "image",
+    extraInput: { scale: 4, face_enhance: false }
+  },
+  {
+    id: "philz1337/supir",
+    name: "SUPIR (v2)",
+    desc: "SUPIR 社区优化版，LLaVA 加持",
+    tag: "细节增强",
+    version: "6e40e71b2b74d1f8b80e1dcfca375a6e48f2aac6a5b5420a80ac2a431eb8a55f",
+    inputKey: "image",
+    extraInput: { upscale: 4, prompt: "high quality, sharp, detailed" }
+  },
+  {
+    id: "nightmareai/real-esrgan",
+    name: "Real-ESRGAN v2",
+    desc: "增强版 Real-ESRGAN，人脸修复好",
+    tag: "人脸增强",
+    version: "42fed1c4974146d4c24112e98f69b1a08c9b4e5d5d3be5b5f64d45ed212c54d3",
+    inputKey: "image",
+    extraInput: { scale: 4, face_enhance: true }
+  }
+];
+
+let selectedModel = MODELS[0];
+let selectedFile = null;
+let resultUrl = null;
+let isProcessing = false;
+let predictionId = null;
+
+// ==================== INIT ====================
+document.addEventListener('DOMContentLoaded', () => {
+  renderModels();
+  updateApiKeyStatus();
+  setupDragDrop();
+  setupComparisonSlider();
+});
+
+function renderModels() {
+  const grid = document.getElementById('modelGrid');
+  grid.innerHTML = MODELS.map((m, i) => `
+    <div class="model-card ${i === 0 ? 'selected' : ''}" data-index="${i}" onclick="selectModel(${i}, this)">
+      <div class="model-name">${m.name}</div>
+      <div class="model-desc">${m.desc}</div>
+      <div class="model-tag">${m.tag}</div>
+    </div>
+  `).join('');
+}
+
+function selectModel(index, el) {
+  selectedModel = MODELS[index];
+  document.querySelectorAll('.model-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// ==================== API KEY ====================
+function getApiKey() {
+  return localStorage.getItem('replicate_api_key') || '';
+}
+
+function updateApiKeyStatus() {
+  const btn = document.getElementById('apiKeyBtn');
+  if (getApiKey()) {
+    btn.textContent = '✓ API Key 已设置';
+    btn.classList.add('active');
+  } else {
+    btn.textContent = '设置 API Key';
+    btn.classList.remove('active');
+  }
+}
+
+function openApiKeyModal() {
+  document.getElementById('apiKeyInput').value = getApiKey();
+  document.getElementById('apiKeyModal').classList.add('active');
+  setTimeout(() => document.getElementById('apiKeyInput').focus(), 100);
+}
+
+function closeApiKeyModal() {
+  document.getElementById('apiKeyModal').classList.remove('active');
+}
+
+function saveApiKey() {
+  const val = document.getElementById('apiKeyInput').value.trim();
+  if (!val) { showToast('请输入 API Key', 'error'); return; }
+  if (!val.startsWith('r8_')) { showToast('Key 格式不正确，应以 r8_ 开头', 'error'); return; }
+  localStorage.setItem('replicate_api_key', val);
+  updateApiKeyStatus();
+  closeApiKeyModal();
+  showToast('API Key 已保存 ✓');
+  updateProcessBtn();
+}
+
+// ==================== UPLOAD ====================
+function setupDragDrop() {
+  const zone = document.getElementById('uploadZone');
+  ['dragenter', 'dragover'].forEach(e => {
+    zone.addEventListener(e, (ev) => { ev.preventDefault(); zone.classList.add('drag-over'); });
+  });
+  ['dragleave', 'drop'].forEach(e => {
+    zone.addEventListener(e, (ev) => { ev.preventDefault(); zone.classList.remove('drag-over'); });
+  });
+  zone.addEventListener('drop', (ev) => {
+    const file = ev.dataTransfer.files[0];
+    if (file) processFile(file);
+  });
+}
+
+function handleFileSelect(ev) {
+  const file = ev.target.files[0];
+  if (file) processFile(file);
+}
+
+function processFile(file) {
+  if (!file.type.startsWith('image/')) { showToast('请选择图片文件', 'error'); return; }
+  if (file.size > 10 * 1024 * 1024) { showToast('图片不能超过 10MB', 'error'); return; }
+
+  selectedFile = file;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const zone = document.getElementById('uploadZone');
+    zone.classList.add('has-image');
+    zone.innerHTML = `
+      <div class="preview-row">
+        <img class="preview-thumb" src="${e.target.result}" alt="预览">
+        <div class="preview-info">
+          <div class="filename">${escapeHtml(file.name)}</div>
+          <div class="meta">
+            <span>${formatBytes(file.size)}</span>
+            <span id="origResSpan">加载中...</span>
+            <span>${file.type}</span>
+          </div>
+          <button class="remove-btn" onclick="event.stopPropagation(); clearFile()">移除</button>
+        </div>
+      </div>
+    `;
+    // Get resolution
+    const img = new Image();
+    img.onload = () => {
+      const span = document.getElementById('origResSpan');
+      if (span) span.textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  updateProcessBtn();
+}
+
+function clearFile() {
+  selectedFile = null;
+  const zone = document.getElementById('uploadZone');
+  zone.classList.remove('has-image');
+  zone.innerHTML = `
+    <div class="upload-icon">🖼️</div>
+    <div class="upload-text">拖拽图片到这里，或 <strong>点击选择文件</strong></div>
+    <div class="upload-hint">支持 JPG / PNG / WebP，最大 10MB</div>
+  `;
+  document.getElementById('fileInput').value = '';
+  updateProcessBtn();
+}
+
+function updateProcessBtn() {
+  const btn = document.getElementById('processBtn');
+  btn.disabled = !(getApiKey() && selectedFile);
+}
+
+// ==================== PROCESS ====================
+async function startUpscale() {
+  if (isProcessing) return;
+  const apiKey = getApiKey();
+  if (!apiKey) { openApiKeyModal(); return; }
+  if (!selectedFile) { showToast('请先上传图片', 'error'); return; }
+
+  isProcessing = true;
+  const btn = document.getElementById('processBtn');
+  btn.disabled = true;
+  btn.textContent = '处理中...';
+
+  document.getElementById('resultSection').classList.remove('active');
+  const progSec = document.getElementById('progressSection');
+  progSec.classList.add('active');
+  progSec.scrollIntoView({ behavior: 'smooth' });
+
+  setProgress(5, '正在上传图片到 Replicate...');
+
+  try {
+    // Step 1: Upload file to Replicate
+    const fileUrl = await uploadFileToReplicate(apiKey, selectedFile);
+    setProgress(15, '图片上传完成，正在排队...');
+
+    // Step 2: Create prediction
+    const input = { ...selectedModel.extraInput };
+    input[selectedModel.inputKey] = fileUrl;
+
+    const prediction = await createPrediction(apiKey, selectedModel.id, selectedModel.version, input);
+    predictionId = prediction.id;
+
+    // Step 3: Poll for result
+    setProgress(20, '模型正在处理中，请耐心等待...');
+    const result = await pollPrediction(apiKey, predictionId);
+
+    // Step 4: Show result
+    if (result.output) {
+      resultUrl = Array.isArray(result.output) ? result.output[0] : result.output;
+      showResult(resultUrl, result);
+    } else if (result.error) {
+      throw new Error(result.error);
+    } else {
+      throw new Error('未知错误：未返回结果');
+    }
+
+    setProgress(100, '处理完成!');
+    setTimeout(() => {
+      document.getElementById('progressSection').classList.remove('active');
+    }, 800);
+
+  } catch (err) {
+    console.error(err);
+    setProgress(0, '');
+    document.getElementById('progressSection').classList.remove('active');
+    showToast('处理失败: ' + err.message, 'error');
+    btn.disabled = !!(getApiKey() && selectedFile);
+    btn.textContent = '⚡ 开始超清增强';
+    isProcessing = false;
+  }
+}
+
+async function uploadFileToReplicate(apiKey, file) {
+  const form = new FormData();
+  form.append('content', file);
+
+  const resp = await fetch('https://api.replicate.com/v1/files', {
+    method: 'POST',
+    headers: { 'Authorization': `Token ${apiKey}` },
+    body: form
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.detail || `上传失败 (HTTP ${resp.status})`);
+  }
+
+  const data = await resp.json();
+  return data.urls.get;
+}
+
+async function createPrediction(apiKey, model, version, input) {
+  const resp = await fetch('https://api.replicate.com/v1/predictions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Token ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      version: version,
+      input: input
+    })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.detail || `创建任务失败 (HTTP ${resp.status})`);
+  }
+
+  return resp.json();
+}
+
+async function pollPrediction(apiKey, id) {
+  let attempts = 0;
+  const maxAttempts = 300; // ~10 minutes at 2s intervals
+
+  while (attempts < maxAttempts) {
+    const resp = await fetch(`https://api.replicate.com/v1/predictions/${id}`, {
+      headers: { 'Authorization': `Token ${apiKey}` }
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `查询状态失败`);
+    }
+
+    const pred = await resp.json();
+
+    switch (pred.status) {
+      case 'succeeded':
+        return pred;
+      case 'failed':
+      case 'canceled':
+        throw new Error(pred.error || `任务${pred.status}`);
+      case 'processing':
+      case 'starting':
+        const prog = pred.logs ? parseProgress(pred.logs) : null;
+        const pct = 20 + Math.min(attempts, 60) / 60 * 75;
+        setProgress(pct, prog || '模型正在推理中...');
+        break;
+      default:
+        setProgress(20, '排队中...');
+    }
+
+    const delay = attempts < 10 ? 2000 : (attempts < 30 ? 3000 : 5000);
+    await sleep(delay);
+    attempts++;
+  }
+
+  throw new Error('处理超时，请重试');
+}
+
+function parseProgress(logs) {
+  if (!logs) return null;
+  const lines = logs.split('\n').filter(l => l.trim());
+  return lines[lines.length - 1]?.substring(0, 80) || null;
+}
+
+function setProgress(pct, text) {
+  document.getElementById('progressBar').style.width = pct + '%';
+  if (text) document.getElementById('progressText').textContent = text;
+}
+
+// ==================== RESULT ====================
+function showResult(url, prediction) {
+  const section = document.getElementById('resultSection');
+  section.classList.add('active');
+  section.scrollIntoView({ behavior: 'smooth' });
+
+  // Load images
+  const imgAfter = document.getElementById('imgAfter');
+  const imgBefore = document.getElementById('imgBefore');
+
+  // Original image
+  const origReader = new FileReader();
+  origReader.onload = (e) => {
+    imgBefore.src = e.target.result;
+    imgAfter.src = url;
+
+    // Wait for both to load
+    let loaded = 0;
+    const onLoad = () => {
+      loaded++;
+      if (loaded === 2) updateResultInfo(prediction);
+    };
+    imgBefore.onload = onLoad;
+    imgAfter.onload = onLoad;
+    imgBefore.onerror = onLoad;
+    imgAfter.onerror = () => {
+      showToast('加载结果图片失败，请检查网络或重试', 'error');
+      onLoad();
+    };
+  };
+  origReader.readAsDataURL(selectedFile);
+
+  // Update result info
+  const info = document.getElementById('resultInfo');
+  const origW = prediction.input?.[selectedModel.inputKey] ? '--' : (() => {
+    const img = new Image();
+    img.src = URL.createObjectURL(selectedFile);
+    return selectedFile.size;
+  })();
+
+  info.innerHTML = `
+    <div class="result-stat">
+      <div class="stat-val">${selectedFile.name.length > 20 ? selectedFile.name.substring(0,20)+'...' : selectedFile.name}</div>
+      <div class="stat-lbl">文件名</div>
+    </div>
+    <div class="result-stat">
+      <div class="stat-val" id="origSize">${formatBytes(selectedFile.size)}</div>
+      <div class="stat-lbl">原图大小</div>
+    </div>
+    <div class="result-stat">
+      <div class="stat-val" id="origRes">--</div>
+      <div class="stat-lbl">原图分辨率</div>
+    </div>
+    <div class="result-stat">
+      <div class="stat-val stat-green" id="newRes">加载中...</div>
+      <div class="stat-lbl">增强分辨率</div>
+    </div>
+  `;
+
+  // Download button
+  document.getElementById('downloadBtn').onclick = () => downloadResult();
+}
+
+function updateResultInfo(prediction) {
+  const imgAfter = document.getElementById('imgAfter');
+  const imgBefore = document.getElementById('imgBefore');
+
+  document.getElementById('origRes').textContent = `${imgBefore.naturalWidth} × ${imgBefore.naturalHeight}`;
+  document.getElementById('newRes').textContent = `${imgAfter.naturalWidth} × ${imgAfter.naturalHeight}`;
+
+  // Estimate upscaled file size
+  fetch(resultUrl, { method: 'HEAD' }).then(r => {
+    const cl = r.headers.get('content-length');
+    if (cl) {
+      const sizeDiv = document.createElement('div');
+      sizeDiv.className = 'result-stat';
+      sizeDiv.innerHTML = `<div class="stat-val stat-green">${formatBytes(parseInt(cl))}</div><div class="stat-lbl">增强后大小</div>`;
+      document.getElementById('resultInfo').appendChild(sizeDiv);
+    }
+  }).catch(() => {});
+
+  // Update process button
+  const btn = document.getElementById('processBtn');
+  btn.textContent = '⚡ 重新处理';
+  btn.disabled = false;
+  isProcessing = false;
+}
+
+async function downloadResult() {
+  if (!resultUrl) return;
+  try {
+    const resp = await fetch(resultUrl);
+    const blob = await resp.blob();
+    const ext = blob.type === 'image/png' ? 'png' : 'jpg';
+    const name = selectedFile.name.replace(/\.[^.]+$/, '') + `_upscaled.${ext}`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('下载已开始 ✓');
+  } catch (e) {
+    // Fallback: open in new tab
+    window.open(resultUrl, '_blank');
+    showToast('已在新标签页打开，请右键保存');
+  }
+}
+
+// ==================== COMPARISON SLIDER ====================
+function setupComparisonSlider() {
+  const container = document.getElementById('comparisonContainer');
+  const before = document.getElementById('comparisonBefore');
+  const slider = document.getElementById('comparisonSlider');
+  const handle = document.getElementById('comparisonHandle');
+  let dragging = false;
+
+  const move = (clientX) => {
+    const rect = container.getBoundingClientRect();
+    let pct = (clientX - rect.left) / rect.width;
+    pct = Math.max(0, Math.min(1, pct)) * 100;
+    before.style.width = pct + '%';
+    slider.style.left = pct + '%';
+    handle.style.left = pct + '%';
+  };
+
+  container.addEventListener('mousedown', (e) => { dragging = true; move(e.clientX); });
+  container.addEventListener('touchstart', (e) => { dragging = true; move(e.touches[0].clientX); }, { passive: true });
+  window.addEventListener('mousemove', (e) => { if (dragging) move(e.clientX); });
+  window.addEventListener('touchmove', (e) => { if (dragging) move(e.touches[0].clientX); }, { passive: true });
+  window.addEventListener('mouseup', () => { dragging = false; });
+  window.addEventListener('touchend', () => { dragging = false; });
+}
+
+// ==================== UTILS ====================
+function resetAll() {
+  clearFile();
+  resultUrl = null;
+  predictionId = null;
+  isProcessing = false;
+  document.getElementById('resultSection').classList.remove('active');
+  document.getElementById('progressSection').classList.remove('active');
+  document.getElementById('processBtn').textContent = '⚡ 开始超清增强';
+  updateProcessBtn();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function showToast(msg, type = '') {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = 'toast ' + type + ' show';
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Check key on load
+updateProcessBtn();
+</script>
+</body>
+</html>
